@@ -3,10 +3,15 @@ import json
 import Move
 import Pokemon
 import MoveStyles
+import os
 
-
-with open("pokedex.json", "r") as file:
+file_path = os.path.join(os.path.dirname(__file__), "pokedex.json")
+with open(file_path, "r") as file:
     pokedex = json.load(file)
+
+move_list_path = os.path.join(os.path.dirname(__file__), "movesList.json")
+with open(move_list_path, "r") as file:
+    moveList = json.load(file)
 
 def findSet(species, set):
     for p in pokedex:
@@ -44,14 +49,10 @@ def buildPokemon(set,ivs):
     abilities = set["Abilities"].split(" / ")
     # Create the Pokemon object
     pokemon = Pokemon.Pokemon(set["Species"], set["Set"],level,ivs, builtMoves, types, stats, abilities[0], set["Item"])
-    # print(pokemon.getInfo())
-    # for m in pokemon.moves:
-    #     print(m.getInfo())
     return pokemon
 
 def buildMoves(moves: list):
-    with open("movesList.json", "r") as file:
-        moveList = json.load(file)
+   
     builtMoves = []
 
     for m in moves:
@@ -61,6 +62,7 @@ def buildMoves(moves: list):
         m = m.upper()
         m = m.replace(" ", "_")
         for x in moveList:
+            x["name"] = x["name"]
             if x["name"] == m:
                 builtMove = Move.Move(x["basePower"], x["name"], x["effect"], x["moveType"], x["accuracy"], 
                                       x["pp"], x["effectChance"], x["moveTargetSelected"], x["priority"], x["flags"], movestyle)
@@ -80,4 +82,21 @@ def parseTypes(types):
     else:
         return {"primary": splitTypes[0], "secondary": None}
 
+def checkMoves():
+    ml_moves = []
+    for move in moveList:
+        ml_moves.append(move["name"])
+    # print(moves)
+    p_moves = []
+    for p in pokedex:
+        moves = [p["Move1"], p["Move2"], p["Move3"], p["Move4"]]
+        for m in moves:
+            m = m.upper()
+            m = m.replace(" ", "_")
+            if m not in p_moves:
+                p_moves.append(m)
 
+    for x in p_moves:
+        if x not in ml_moves:
+            print(x)
+                

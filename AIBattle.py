@@ -17,6 +17,7 @@ class AIBattle:
         self.opponentMoveLog = []
         self.playerMoveLog = []
         self.ai = PokemonAI.PokemonAI(self)
+        self.battleType = "Singles" # Default to singles
 
     def start(self):
         print("Battle started!")
@@ -41,15 +42,15 @@ class AIBattle:
         else:
             return 3
 
-roundNumber = 1
+roundNumber = 4
 battleNumber = 1
 trainerType = None
 phraseNumber = None
-pokemon1 = buildPokemon.buildPokemonBySet("Espeon", 2,31)
+pokemon1 = buildPokemon.buildPokemonBySet("Wailord", 1,31)
 pokemon2 = buildPokemon.buildPokemonBySet("Medicham", 3,31)
 pokemon3 = buildPokemon.buildPokemonBySet("Machamp", 1,31)
 playerTeam = [pokemon1,pokemon2,pokemon3]
-opponentPokemon = "Latias"
+opponentPokemon = "Venusaur"
 
 
 AIBattle(playerTeam,opponentPokemon,roundNumber,battleNumber, trainerType,phraseNumber).start()

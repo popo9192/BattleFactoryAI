@@ -73,6 +73,3 @@ def getAttackStat(moveType):
 
 def getPhysicalTypes():
     return [key for key, value in attackStatByType.items() if value == "physical"]
-
-x = getPhysicalTypes()
-print(x)

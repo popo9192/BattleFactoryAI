@@ -3,9 +3,16 @@ import buildPokemon
 import damageCalc
 import random
 import TypeEffectiveness
+import os
 
-with open("pokedex.json", "r") as file:
+file_path = os.path.join(os.path.dirname(__file__), "pokedex.json")
+with open(file_path, "r") as file:
     pokedex = json.load(file)
+
+discouragedMoves = [
+    "EXPLOSION", "SELF_DESTRUCT", "RAZOR_WIND", "SOLAR_BEAM", "BLAST_BURN", 
+    "HYDRO_CANNON", "FRENZY_PLANT", "HYPER_BEAM", "DREAM_EATER", "FOCUS_PUNCH"
+]
 
 class PokemonAI:
     def __init__(self, battle):
@@ -52,14 +59,16 @@ class PokemonAI:
         return setsWithRightMove
 
     def calculate_move_scores(self,battle):
-        attacker = battle.activeOpponentPokemon
+        attacker = self.identifiedPokemon
         target = battle.activePlayerPokemon
         scores = {}
-        moveDamages = damageCalc.getDamageForMoves(attacker, target, battle)
+        moveDamages = damageCalc.getDamageForMoves(attacker, target, battle.field)
+        
 
         for move in attacker.moves:
             score = 0
             moveDamage = moveDamages[move.name]
+            isDoubleEffective = self.checkDoubleEffectiveness(move, target)
 
             # Rule 1: Avoid invalid moves
             if self.move_would_fail(move, attacker, target):
@@ -67,22 +76,21 @@ class PokemonAI:
                 continue
 
             # Rule 2: Look for kills
-            if self.move_can_kill(moveDamage, target):
+            if self.move_can_kill(move, moveDamage, target):
                 score += 4
-                if move.priority > 0 and move.name != "Fake Out":
+                if move.priority > 0 and move.name != "FAKE_OUT":
                     score += 2
-            print(move.name, score)
-
-            # Rule 3: Damage-based scoring
-            highestDamage = self.calculate_highest_damage(moveDamages)
-            if move.basePower > 0 and move.name != highestDamage:
-                score -= 1
-            elif move.basePower > 0 and move.name == highestDamage:
-                score += 0
-
+            else:
+                # Rule 3: Damage-based scoring if move cannot kill
+                highestDamage = self.calculate_highest_damage(moveDamages)
+                if move.basePower > 1 and move.name != highestDamage:
+                    score -= 1
+                elif move.basePower > 1 and move.name == highestDamage:
+                    score += 0
+                elif (move.basePower <= 1 or move.name in discouragedMoves) and isDoubleEffective and random.random() <= 0.69:
+                    score += 2
             # Rule 4: Special logic for status or situational moves
-            if move.special_logic:
-                score += self.apply_special_logic(move, attacker, target, battle)
+            score += self.apply_special_logic(move, attacker, target, battle)
 
             scores[move.name] = score
         print(scores)
@@ -94,14 +102,15 @@ class PokemonAI:
         if isImmune:
             return True
         # Explosion/Self-Destruct logic
-        if move.name in ["Explosion", "Self-Destruct"] and attacker.hp <= 0: #update to check if last opponent pokemon
+        if move.name in ["EXPLOSION", "SELF_DESTRUCT"] and attacker.hp <= 0: #update to check if last opponent pokemon
             return True
         # Add other invalid move checks here
-        return False
+        if (move.name == "SUBSTITTE" and attacker.hp / attacker.maxHp < .3):
+            return False
     
-    def move_can_kill(self, moveDamage, target):
+    def move_can_kill(self,move, moveDamage, target):
         rollsThatKill = 0
-        if moveDamage == 0:
+        if move.basePower <= 1 or (move.name in ["EXPLOSION", "SELF_DESTRUCT"]):
             return False
         for roll in moveDamage:
             if roll >= target.hp:
@@ -118,20 +127,24 @@ class PokemonAI:
             if damage > max_damage:
                 max_damage = damage
                 best_move = move
-        print("Best move: ", best_move)
         return best_move
     
+    def checkDoubleEffectiveness(self, move, target):
+        moveEffectiveness = TypeEffectiveness.getMoveEffectiveness(move.moveType, target)
+        if moveEffectiveness == 4:
+            return True
+
     def apply_special_logic(self,move, attacker, target, battle):
         scoreAdjustment = 0
         moveEffectiveness = TypeEffectiveness.getMoveEffectiveness(move.moveType, target)
         # Example: Always Hit moves
-        if (move.name in ["Aerial Ace", "Faint Attack", "Magical Leaf", "Shadow Punch", "Shock Wave", "Swift"] 
+        if (move.name in ["AERIAL_ACE", "FAINT_ATTACK", "MAGICAL_LEAF", "SHADOW_PUNCH", "SHOCK_WAVE", "SWIFT"] 
             and attacker.statStages["accuracy"] <= -3):
             scoreAdjustment += 1
             if attacker.statStages["accuracy"] <= -5:
                 scoreAdjustment += 1
 
-        if move.name in ["Swords Dance", "Meditate"]:
+        if move.name in ["SWORDS_DANCE", "MEDITATE"]:
             attackStage = attacker.statsStage["attack"]  # Get current attack stage
 
             # If the user is at +3 attack or higher
@@ -231,7 +244,7 @@ class PokemonAI:
 
 
         # Example: Fake Out gets +2 on the first turn
-        if move.name == "Fake Out" and attacker.turnsInBattle == 0:
+        if move.name == "FAKE_OUT" and attacker.turnsInBattle == 0:
             scoreAdjustment += 2
 
         # Example: Baton Pass logic
@@ -323,15 +336,15 @@ class PokemonAI:
         if move.name in ["Giga Drain", "Leech Life", "Mega Drain"]:
             if move.move_type in target.types:  # If resisted
                 if random.random() < 0.8:  # 80% chance of -3 score
-                    score_adjustment -= 3
+                    scoreAdjustment -= 3
 
         if move.name == "Dream Eater":
             if move.move_type in target.types:  # If resisted
-                score_adjustment -= 1
+                scoreAdjustment -= 1
                 
         if move.name == "Encore":
             if target.stats["speed"] > attacker.stats["speed"]:  # Target is faster
-                score_adjustment -= 2
+                scoreAdjustment -= 2
             else:  # Check the last move used by the target
                 last_move = battle.known_player_moves[-1] if battle.known_player_moves else None
                 if last_move and last_move.name in [
@@ -344,157 +357,157 @@ class PokemonAI:
                     "Thunder Wave", "Toxic", "Water Sport", "Will-O-Wisp"
                 ]:
                     if random.random() < 0.88:  # 88% chance of +3 score
-                        score_adjustment += 3
+                        scoreAdjustment += 3
                 else:
-                    score_adjustment -= 2
+                    scoreAdjustment -= 2
 
         if move.name == "Endeavor":
             if target.hp < target.maxHp * 0.7:  # Target is below 70% HP
-                score_adjustment -= 1
+                scoreAdjustment -= 1
             else:
                 hp_threshold = 0.4 if attacker.stats["speed"] > target.stats["speed"] else 0.5
                 if attacker.hp > attacker.maxHp * hp_threshold:
-                    score_adjustment -= 1
+                    scoreAdjustment -= 1
                 else:
-                    score_adjustment += 1
+                    scoreAdjustment += 1
         
         if move.name == "Endure":
             if attacker.hp / attacker.maxHp < 0.34 and attacker.hp / attacker.maxHp > 0.04:
                 if random.random() < 0.73:  # 73% chance of +1 score
-                    score_adjustment += 1
+                    scoreAdjustment += 1
             else:
-                score_adjustment -= 1
+                scoreAdjustment -= 1
         
         if move.name == "Double Team":
             if attacker.hp / attacker.maxHp >= 0.9:  # User has 90%+ HP
                 if random.random() < 0.61:  # 61% chance of +3 score
-                    score_adjustment += 3
+                    scoreAdjustment += 3
             if attacker.stats.get("evasion", 0) >= 3:  # Evasion is +3 or higher
                 if random.random() < 0.5:
-                    score_adjustment -= 1
+                    scoreAdjustment -= 1
             if attacker.hp < attacker.maxHp * 0.4:  # Below 40% HP
-                score_adjustment -= 2
+                scoreAdjustment -= 2
             if 0.41 < attacker.hp / attacker.maxHp < 0.7 and attacker.stats.get("evasion", 0) > 0:
                 if random.random() < 0.73:
-                    score_adjustment -= 2
+                    scoreAdjustment -= 2
         
         if move.name in ["Milk Drink", "Softboiled", "Moonlight", "Morning Sun", "Recover", "Slack Off", "Swallow", "Synthesis"]:
             if attacker.hp == attacker.maxHp:  # At full HP
-                score_adjustment -= 3
+                scoreAdjustment -= 3
             elif attacker.stats["speed"] > target.stats["speed"]:  # Faster
-                score_adjustment -= 8
+                scoreAdjustment -= 8
             else:  # Slower and below full HP
                 if attacker.hp >= attacker.maxHp * 0.7:
                     if random.random() < 0.88:
-                        score_adjustment -= 3
+                        scoreAdjustment -= 3
                 else:
                     if random.random() < 0.92:
-                        score_adjustment += 2
+                        scoreAdjustment += 2
         if move.name in ["Blaze Kick", "Aeroblast", "Crabhammer", "Cross Chop", "Dragon Claw", "Drill Peck", "Drill Run", "Karate Chop", "Leaf Blade", "Razor Leaf", "Slash", "X-Scissors"]:
             if move.move_type in target.types:  # Super effective
                 if random.random() < 0.5:
-                    score_adjustment += 1
+                    scoreAdjustment += 1
             elif move.move_type not in target.types:  # Neutral
                 if random.random() < 0.25:
-                    score_adjustment += 1
+                    scoreAdjustment += 1
 
         if move.name == "Poisonpowder":
             if attacker.hp < attacker.maxHp * 0.5 or target.hp < target.maxHp * 0.5:
-                score_adjustment -= 1
+                scoreAdjustment -= 1
         
         if move.name in ["Protect", "Detect"]:
             if battle.protect_count >= 2:  # Discourage after two consecutive uses
-                score_adjustment -= 2
+                scoreAdjustment -= 2
             elif attacker.status in ["Badly Poisoned", "Infatuated"] or battle.is_perish_song_active:
-                score_adjustment += 0  # Bug: No discouragement
+                scoreAdjustment += 0  # Bug: No discouragement
             else:
-                score_adjustment += 2
+                scoreAdjustment += 2
                 if random.random() < 0.5:
-                    score_adjustment -= 1
+                    scoreAdjustment -= 1
                 if battle.last_used_move == "Protect" or battle.last_used_move == "Detect":
-                    score_adjustment -= random.choice([-1, -2])
+                    scoreAdjustment -= random.choice([-1, -2])
 
         if move.name in ["Blast Burn", "Frenzy Plant", "Hydro Cannon", "Hyper Beam"]:
             if move.move_type in target.types:  # Resisted
-                score_adjustment -= 1
+                scoreAdjustment -= 1
             else:
                 hp_threshold = 0.6 if attacker.stats["speed"] < target.stats["speed"] else 0.41
                 if attacker.hp >= attacker.maxHp * hp_threshold:
-                    score_adjustment -= 1
+                    scoreAdjustment -= 1
 
         if move.name == "Recycle":
             if attacker.held_item in ["Chesto Berry", "Lum Berry", "Starf Berry"]:
                 if random.random() < 0.8:
-                    score_adjustment += 1
+                    scoreAdjustment += 1
             else:
-                score_adjustment -= 2
+                scoreAdjustment -= 2
         
         if move.name == "Rest":
             if attacker.hp == attacker.maxHp:
-                score_adjustment -= 8
+                scoreAdjustment -= 8
             elif attacker.stats["speed"] > target.stats["speed"]:
                 if attacker.hp >= attacker.maxHp * 0.5:
-                    score_adjustment -= 3
+                    scoreAdjustment -= 3
                 elif attacker.hp >= attacker.maxHp * 0.4 and random.random() < 0.73:
-                    score_adjustment -= 3
+                    scoreAdjustment -= 3
                 else:
                     if random.random() < 0.96:
-                        score_adjustment += 3
+                        scoreAdjustment += 3
             else:
                 if attacker.hp >= attacker.maxHp * 0.71:
-                    score_adjustment -= 3
+                    scoreAdjustment -= 3
                 elif attacker.hp >= attacker.maxHp * 0.6 and random.random() < 0.8:
-                    score_adjustment -= 3
+                    scoreAdjustment -= 3
                 else:
                     if random.random() < 0.96:
-                        score_adjustment += 3
+                        scoreAdjustment += 3
             
             if move.name == "Revenge":
                 if attacker.status not in ["Asleep", "Infatuated", "Confused"]:
                     if random.random() < 0.27:  # 27% chance of +2
-                        score_adjustment += 2
+                        scoreAdjustment += 2
                 else:
-                    score_adjustment -= 2
+                    scoreAdjustment -= 2
             
             if move.name in ["Light Screen", "Reflect"]:
                 if attacker.hp < attacker.maxHp * 0.5:
-                    score_adjustment -= 2
+                    scoreAdjustment -= 2
                 elif move.move_type not in target.types:
                     if random.random() < 0.8:  # 80% chance of -2
-                        score_adjustment -= 2
+                        scoreAdjustment -= 2
 
         if move.name in ["Explosion", "Selfdestruct"]:
             if attacker.hp >= attacker.maxHp * 0.8:
-                score_adjustment -= random.choice([1, 3])  # 80% chance of -1 or -3
+                scoreAdjustment -= random.choice([1, 3])  # 80% chance of -1 or -3
             elif attacker.hp >= attacker.maxHp * 0.51:
                 if random.random() < 0.8:  # 80% chance of -1
-                    score_adjustment -= 1
+                    scoreAdjustment -= 1
             elif attacker.hp >= attacker.maxHp * 0.3:
                 if random.random() < 0.5:  # 50% chance of +1
-                    score_adjustment += 1
+                    scoreAdjustment += 1
             else:
                 chance = random.random()
                 if chance < 0.4:
-                    score_adjustment += 2
+                    scoreAdjustment += 2
                 elif chance < 0.9:
-                    score_adjustment += 1
+                    scoreAdjustment += 1
 
         if move.name in ["Bounce", "Dig", "Dive", "Fly"]:
             if battle.target_knows_protect():
-                score_adjustment -= 1
+                scoreAdjustment -= 1
             elif random.random() < 0.69:  # 69% chance of +1
                 if attacker.stats["speed"] > target.stats["speed"] or target.status in ["Badly Poisoned", "Leech Seeded"]:
-                    score_adjustment += 1
+                    scoreAdjustment += 1
         
-        if move.name in ["Cosmic Power", "Stockpile", "Calm Mind", "Amnesia"]:
-            if attacker.hp == attacker.maxHp and attacker.stats["special_defense_stage"] <= 2:
+        if move.name in ["Cosmic Power", "Stockpile", "CALM_MIND", "Amnesia"]:
+            if attacker.hp == attacker.maxHp and attacker.statStages["specialAttack"] <= 2:
                 if random.random() < 0.5:  # 50% chance of +2
-                    score_adjustment += 2
-            elif attacker.stats["special_defense_stage"] >= 3:
+                    scoreAdjustment += 2
+            elif attacker.statStages["specialAttack"] >= 3:
                 if random.random() < 0.61:  # 61% chance of -1
-                    score_adjustment -= 1
+                    scoreAdjustment -= 1
             elif attacker.hp < attacker.maxHp * 0.4:
-                score_adjustment -= 2
+                scoreAdjustment -= 2
 
 
 
@@ -513,7 +526,7 @@ class PokemonAI:
         player = battle.activePlayerPokemon
 
         # Calculate scores for all moves
-        move_scores = self.calculate_move_scores(opponent, player, battle)
+        move_scores = self.calculate_move_scores(battle)
 
         # Choose the move with the highest score
         best_move = max(move_scores, key=move_scores.get)

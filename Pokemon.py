@@ -62,4 +62,5 @@ class Pokemon:
         
     
     def getInfo(self):
-        return f"{self.species}{self.set} Types:({self.types["primary"], self.types["secondary"]}) HP: {self.hp}/{self.maxHp} Stats: {self.currentStats}" 
+        print(self.types)
+        return f"{self.species}{self.set} Types:({self.types['primary'], self.types['secondary']}) HP: {self.hp}/{self.maxHp} Stats: {self.currentStats}" 

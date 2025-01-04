@@ -6,9 +6,6 @@ import math
 import Field
 
 # Takes an 2 pokemon and calcuates the damage of the attackers moves against the defender
-attacker = buildPokemon.buildPokemonBySet("Zapdos", 3,31)
-defender = buildPokemon.buildPokemonBySet("Espeon", 2,31)
-field = Field.Field()
 
 # field.weather = "Sun"
 # attacker.ability = "Flash Fire (activated)"
@@ -16,7 +13,7 @@ field = Field.Field()
 def formatMoveDamageResponse(move, damage):
     return f"{move.name} does {damage} damage"
 
-def getDamageForMoves(attacker, defender,battle):
+def getDamageForMoves(attacker, defender,field):
     moveDamages = {}
 
     for m in attacker.moves:
@@ -25,7 +22,7 @@ def getDamageForMoves(attacker, defender,battle):
         moveEffectiveness = TypeEffectiveness.getMoveEffectiveness(m.moveType, defender)
         defenderIsAbilityImmune = checkIfDefenderHasImmuneAbility(defender, m)
         if(moveEffectiveness == 0 or m.basePower == 0 or defenderIsAbilityImmune):
-            moveDamages[m.name] = 0
+            moveDamages[m.name] = [0]
             continue
 
         if m.name == "SEISMIC_TOSS" or m.name == "NIGHT_SHADE":
@@ -35,8 +32,7 @@ def getDamageForMoves(attacker, defender,battle):
         if m.name == "EXPLOSION" or m.name == "SELF_DESTRUCT":
             defenderStats["defense"] = math.floor(int(defenderStats["defense"] / 2))
 
-        moveAttackStat = TypeEffectiveness.attackStatByType[m.moveType]
-        if moveAttackStat == "physical":
+        if m.moveAttackType == "physical":
             attackStat = "attack"
             defenseStat = "defense"
         else:
@@ -65,14 +61,14 @@ def getDamageForMoves(attacker, defender,battle):
             stabModifier = 1.0
 
         m.basePower = checkVariableDamageMoves(m)
-        itemModifier = getAttackerItemModifier(attacker, m)
+        itemModifier = getAttackerItemModifier(attacker)
         attackerStats["attack"] = int(attackerStats["attack"] * itemModifier)
         
         overgrowModifier = getAttackerAbilityModifier(attacker, m)
         m.basePower = math.floor(int(m.basePower * overgrowModifier))
         weatherModifier = getWeatherModifier(m, field)
         baseDamage = calculate_base_damage(attacker, m, attackerStats[attackStat], defenderStats[defenseStat], 
-                                           {"stab": stabModifier, "effectiveness": moveEffectiveness, "weather": weatherModifier})
+                                           {"stab": stabModifier, "effectiveness": moveEffectiveness, "weather": weatherModifier}, field)
         damageRange = generate_damage_range(baseDamage)
         moveDamages[m.name] = damageRange
     print(moveDamages)
@@ -120,7 +116,7 @@ def checkVariableDamageMoves(move):
         # We dont have weights...
     return basePower
     
-def getAttackerItemModifier(attacker, move):
+def getAttackerItemModifier(attacker):
     modifier = 1.0
     if attacker.item == "Choice Band":
         modifier = 1.5
@@ -143,7 +139,7 @@ def getWeatherModifier(move, field):
         modifier = 0.5
     return modifier
     
-def calculate_base_damage(attacker, move, attack, defense, base_damage_modifiers):
+def calculate_base_damage(attacker, move, attack, defense, base_damage_modifiers, field):
     """
     Calculate damage for Pokémon Gen 3 mechanics.
     
@@ -173,10 +169,18 @@ def calculate_base_damage(attacker, move, attack, defense, base_damage_modifiers
 
     if attacker.ability == "Flash Fire (activated)" and move.moveType == "FIRE":
         base_damage = math.floor(base_damage * 1.5)
+    
+    if move.name != "BRICK_BREAK":
+        if field.isReflect and move.moveAttackType == "physical":
+            base_damage = math.floor(base_damage * 0.5)
+        elif field.isLightScreen and move.moveAttackType == "special":
+            base_damage = math.floor(base_damage * 0.5)
 
     base_damage =(base_damage + 2)
     # Step 2: Apply modifiers
     total_damage = math.floor(base_damage * stab) * effectiveness * critical * other_modifiers
+
+   
     # Return the final integer damage value
     return int(total_damage)
 
@@ -196,10 +200,14 @@ def generate_damage_range(base_damage):
     (from 0.85 to 1.0 in increments of 0.01).
     """
     damage_range = [int(base_damage * factor) for factor in [x / 100 for x in range(85, 101)]]
-    print(damage_range)
     return damage_range
 
+attacker = buildPokemon.buildPokemonBySet("Zapdos", 3,31)
+defender = buildPokemon.buildPokemonBySet("Espeon", 2,31)
+field = Field.Field()
+field.isLightScreen = True 
+field.isReflect = True
 
-getDamageForMoves(attacker, defender,field)
+# getDamageForMoves(attacker, defender,field)
 
 

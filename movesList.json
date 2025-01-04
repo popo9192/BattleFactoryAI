@@ -2079,7 +2079,7 @@
     "basePower": 0,
     "name": "CURSE",
     "effect": "EFFECT_CURSE",
-    "moveType": "MYSTERY",
+    "moveType": "GHOST",
     "accuracy": 0,
     "pp": 10,
     "effectChance": 0,
